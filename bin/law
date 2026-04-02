@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+CONFIG_DIR="$HOME/.config/law"
+CONFIG_FILE="$CONFIG_DIR/config"
+STATE_FILE="$CONFIG_DIR/state"
+
+mkdir -p "$CONFIG_DIR"
+
+# Load config or default
+if [ -f "$CONFIG_FILE" ]; then
+  source "$CONFIG_FILE"
+else
+  DIRS="$HOME/Videos/wallpapers"
+  mkdir -p "$DIRS"
+fi
+
+# Load modules
+BASE_DIR="$(dirname "$(realpath "$0")")/.."
+source "$BASE_DIR/lib/monitors.sh"
+source "$BASE_DIR/lib/optimize.sh"
+source "$BASE_DIR/lib/files.sh"
+
+check_deps() {
+  for cmd in mpvpaper ffmpeg yt-dlp xrandr mpv; do
+    command -v $cmd >/dev/null || {
+      echo "❌ Missing dependency: $cmd"
+      exit 1
+    }
+  done
+}
+
+check_deps
+
+case "$1" in
+  set) cmd_set ;;
+  add) cmd_add "$2" ;;
+  dirs) cmd_dirs ;;
+  list) cmd_list ;;
+  restore) cmd_restore ;;
+  *)
+    echo "Usage:"
+    echo "  law set"
+    echo "  law add <file|url>"
+    echo "  law dirs"
+    echo "  law list"
+    echo "  law restore"
+    ;;
+esac
