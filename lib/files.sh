@@ -37,6 +37,49 @@ collect_files() {
   done
 }
 
+extract_first_frame() {
+  local VIDEO="$1"
+  local OUTPUT="$2"
+
+  [ -f "$OUTPUT" ] && return
+
+  echo "📸 Extracting first frame from $(basename "$VIDEO")"
+
+  ffmpeg -y -i "$VIDEO" \
+    -vf "select=eq(n\,0)" \
+    -q:v 3 \
+    "$OUTPUT" 2>/dev/null
+}
+
+set_background_from_video() {
+  local VIDEO="$1"
+  local CACHE_DIR="$HOME/.config/law/backgrounds"
+  mkdir -p "$CACHE_DIR"
+
+  local VIDEO_HASH=$(echo "$VIDEO" | md5sum | awk '{print $1}')
+  local BG_IMAGE="$CACHE_DIR/${VIDEO_HASH}.jpg"
+
+  extract_first_frame "$VIDEO" "$BG_IMAGE"
+
+  if [ -f "$BG_IMAGE" ]; then
+    # For KDE Plasma - update wallpaper configuration
+    local KDE_CONFIG="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
+    if [ -f "$KDE_CONFIG" ]; then
+      local BG_URL="file://${BG_IMAGE}"
+      
+      # Update all Image= lines in the config to use the new background
+      sed -i "s|^Image=.*|Image=${BG_URL}|g" "$KDE_CONFIG"
+      
+      echo "✅ Background image set to $(basename "$BG_IMAGE")"
+      
+      # Signal KDE to reload wallpaper
+      dbus-send --session --print-reply \
+        /org/kde/plasmashell \
+        org.kde.PlasmaShell.refreshCurrentActivity 2>/dev/null || true
+    fi
+  fi
+}
+
 cmd_set() {
   detect_monitors
   collect_files
@@ -64,10 +107,13 @@ cmd_set() {
     exit 1
   fi
 
-  pkill mpvpaper 2>/dev/null
+  pkill -9 mpvpaper 2>/dev/null
 
-  mpvpaper -o "no-audio loop hwdec=auto" "$LEFT_MON" "$LEFT_FILE" &
-  mpvpaper -o "no-audio loop hwdec=auto" "$RIGHT_MON" "$RIGHT_FILE" &
+  echo "📸 Setting up background images..."
+  set_background_from_video "$LEFT_FILE"
+  set_background_from_video "$RIGHT_FILE"
+
+  run_wallpaper "$LEFT_MON" "$RIGHT_MON" "$LEFT_FILE" "$RIGHT_FILE"
 
   echo "$LEFT_FILE|$RIGHT_FILE" > "$HOME/.config/law/state"
 
@@ -115,7 +161,30 @@ cmd_dirs() {
   fi
 }
 
+wait_for_monitors() {
+  echo "⏳ Waiting for monitors..."
+
+  for i in {1..10}; do
+    COUNT=$(xrandr --query | grep " connected" | wc -l)
+
+    if [ "$COUNT" -ge 1 ]; then
+      echo "✅ Monitors detected"
+      return
+    fi
+
+    sleep 0.5
+  done
+
+  echo "⚠️ Timeout waiting for monitors"
+}
+
+get_root_pixmap() {
+  xprop -root _XROOTPMAP_ID 2>/dev/null | awk -F'=' '{gsub(/ /, "", $2); print $2}'
+}
+
 cmd_restore() {
+  wait_for_monitors
+
   detect_monitors
 
   STATE_FILE="$HOME/.config/law/state"
@@ -123,8 +192,32 @@ cmd_restore() {
 
   IFS="|" read -r LEFT_FILE RIGHT_FILE < "$STATE_FILE"
 
-  pkill mpvpaper 2>/dev/null
+  pkill -9 mpvpaper 2>/dev/null
 
-  mpvpaper -o "no-audio loop hwdec=auto" "$LEFT_MON" "$LEFT_FILE" &
-  mpvpaper -o "no-audio loop hwdec=auto" "$RIGHT_MON" "$RIGHT_FILE" &
+  echo "📸 Setting up background images..."
+  set_background_from_video "$LEFT_FILE"
+  set_background_from_video "$RIGHT_FILE"
+
+  run_wallpaper "$LEFT_MON" "$RIGHT_MON" "$LEFT_FILE" "$RIGHT_FILE"
+}
+
+cmd_stop() {
+  if pkill -9 mpvpaper 2>/dev/null; then
+    echo "🛑 Force stopped all mpvpaper instances"
+  else
+    echo "ℹ️ No mpvpaper processes found"
+  fi
+}
+
+run_wallpaper() {
+  LEFT_MON="$1"
+  RIGHT_MON="$2"
+  LEFT_FILE="$3"
+  RIGHT_FILE="$4"
+
+  pkill -9 mpvpaper 2>/dev/null
+
+  echo "🟢 Starting wallpapers: $LEFT_FILE on $LEFT_MON and $RIGHT_FILE on $RIGHT_MON"
+  mpvpaper -o "no-audio loop" "$LEFT_MON" "$LEFT_FILE" &
+  mpvpaper -o "no-audio loop" "$RIGHT_MON" "$RIGHT_FILE" &
 }

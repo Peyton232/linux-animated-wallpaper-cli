@@ -21,7 +21,7 @@ source "$BASE_DIR/lib/optimize.sh"
 source "$BASE_DIR/lib/files.sh"
 
 check_deps() {
-  for cmd in mpvpaper ffmpeg yt-dlp xrandr mpv; do
+  for cmd in mpvpaper ffmpeg yt-dlp xrandr mpv xprop; do
     command -v $cmd >/dev/null || {
       echo "❌ Missing dependency: $cmd"
       exit 1
@@ -37,6 +37,8 @@ case "$1" in
   dirs) cmd_dirs ;;
   list) cmd_list ;;
   restore) cmd_restore ;;
+  refresh) cmd_restore ;;
+  stop) cmd_stop ;;
   *)
     echo "Usage:"
     echo "  law set"
@@ -44,5 +46,7 @@ case "$1" in
     echo "  law dirs"
     echo "  law list"
     echo "  law restore"
+    echo "  law refresh"
+    echo "  law stop"
     ;;
 esac
